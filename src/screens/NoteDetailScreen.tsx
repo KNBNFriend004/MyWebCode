@@ -12,6 +12,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
 import { useTheme } from '../context/ThemeContext';
 import { useData } from '../context/DataContext';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'NoteDetail'>;
 type Route = RouteProp<RootStackParamList, 'NoteDetail'>;
@@ -103,9 +104,18 @@ const NoteDetailScreen: React.FC = () => {
         {/* Description Section */}
         <View style={[styles.section, { backgroundColor: colors.card, shadowColor: colors.shadow }]}>
           <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Description</Text>
-          <Text style={[styles.descriptionText, { color: colors.text }]}>
-            {note.description || 'No description provided.'}
-          </Text>
+          {note.description ? (
+            <MarkdownRenderer
+              text={note.description}
+              textColor={colors.text}
+              secondaryColor={colors.textSecondary}
+              accentColor={colors.primary}
+            />
+          ) : (
+            <Text style={[styles.descriptionText, { color: colors.textSecondary }]}>
+              No description provided.
+            </Text>
+          )}
         </View>
 
         {/* Metadata */}
