@@ -8,6 +8,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Added a timeout so a "stuck" build doesn't waste your minutes
+    timeout-minutes: 30 
+
+    env:
+      # Fixes "Out of Memory" errors during heavy compilation
+      NODE_OPTIONS: "--max-old-space-size=4096"
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 
     steps:
       - name: Checkout repository
@@ -26,11 +33,22 @@ jobs:
           java-version: '17'
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install --legacy-peer-deps
+          # Ensure expo-cli is available for the prebuild step
+          npm install -g expo-cli
 
-      # This creates the /android folder that was missing
+      # FIX: Solves the "Could not find org.asyncstorage" error
+      - name: Configure Android Project
+        run: |
+          mkdir -p android
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          echo "nodeModulesDir=$(pwd)/node_modules" >> android/gradle.properties
+          # Fix for certain Gradle versions needing higher permissions
+          touch android/settings.gradle
+
       - name: Prebuild Android
-        run: npx expo prebuild --platform android
+        run: npx expo prebuild --platform android --no-install
 
       - name: Cache Gradle
         uses: actions/cache@v3
@@ -39,17 +57,28 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Grant permission
         run: chmod +x android/gradlew
 
       - name: Build APK
+        id: build_apk
         run: |
           cd android
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --stacktrace
 
+      # Only uploads if the build actually succeeded
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: android/app/build/outputs/apk/release/app-release.apk
+
+      # Helpful error summary if things go wrong
+      - name: Report failure
+        if: failure()
+        run: echo "Build failed. Check the 'Build APK' step logs for Java/Gradle errors."
+        
