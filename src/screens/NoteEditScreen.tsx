@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Alert,
   Platform,
+  NativeSyntheticEvent,
+  TextInputSelectionChangeEventData,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -41,6 +43,9 @@ const NoteEditScreen: React.FC = () => {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(formatDateForInput(new Date().toISOString()));
   const [errors, setErrors] = useState<{ description?: string; date?: string }>({});
+  const [selection, setSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+
+  const descriptionRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (existingNote) {
@@ -82,6 +87,52 @@ const NoteEditScreen: React.FC = () => {
     }
 
     navigation.goBack();
+  };
+
+  const handleSelectionChange = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+    setSelection(e.nativeEvent.selection);
+  };
+
+  const insertFormatting = (prefix: string, suffix: string, placeholder: string) => {
+    const { start, end } = selection;
+    const selectedText = description.slice(start, end);
+    const textToInsert = selectedText.length > 0 ? selectedText : placeholder;
+    const newText =
+      description.slice(0, start) + prefix + textToInsert + suffix + description.slice(end);
+    setDescription(newText);
+
+    const newCursorPos = start + prefix.length + textToInsert.length;
+    setTimeout(() => {
+      setSelection({ start: newCursorPos, end: newCursorPos });
+      descriptionRef.current?.focus();
+    }, 50);
+  };
+
+  const insertLinePrefix = (prefix: string) => {
+    const { start } = selection;
+    const beforeCursor = description.slice(0, start);
+    const lineStart = beforeCursor.lastIndexOf('\n') + 1;
+    const isAtLineStart = start === lineStart || description.slice(lineStart, start).trim() === '';
+
+    let newText: string;
+    let newCursorPos: number;
+
+    if (isAtLineStart) {
+      newText = description.slice(0, lineStart) + prefix + description.slice(lineStart);
+      newCursorPos = lineStart + prefix.length;
+    } else {
+      newText = description.slice(0, start) + '\n' + prefix;
+      if (start < description.length) {
+        newText += description.slice(start);
+      }
+      newCursorPos = start + 1 + prefix.length;
+    }
+
+    setDescription(newText);
+    setTimeout(() => {
+      setSelection({ start: newCursorPos, end: newCursorPos });
+      descriptionRef.current?.focus();
+    }, 50);
   };
 
   const handleCancel = () => {
@@ -162,10 +213,63 @@ const NoteEditScreen: React.FC = () => {
           />
         </View>
 
-        {/* Description Input */}
+        {/* Description with Formatting Toolbar */}
         <View style={styles.field}>
           <Text style={[styles.label, { color: colors.textSecondary }]}>Description</Text>
+
+          {/* Formatting Toolbar */}
+          <View style={[styles.toolbar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => insertLinePrefix('# ')}
+              style={[styles.toolbarBtn, { backgroundColor: colors.inputBg }]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.toolbarBtnText, { color: colors.text }]}>H1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => insertLinePrefix('## ')}
+              style={[styles.toolbarBtn, { backgroundColor: colors.inputBg }]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.toolbarBtnText, { color: colors.text }]}>H2</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => insertLinePrefix('### ')}
+              style={[styles.toolbarBtn, { backgroundColor: colors.inputBg }]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.toolbarBtnText, { color: colors.text }]}>H3</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => insertFormatting('**', '**', 'bold text')}
+              style={[styles.toolbarBtn, { backgroundColor: colors.inputBg }]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.toolbarBtnTextBold, { color: colors.text }]}>B</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => insertLinePrefix('- ')}
+              style={[styles.toolbarBtn, { backgroundColor: colors.inputBg }]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.toolbarBtnText, { color: colors.text }]}>{"\u2022"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => insertLinePrefix('1. ')}
+              style={[styles.toolbarBtn, { backgroundColor: colors.inputBg }]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.toolbarBtnText, { color: colors.text }]}>1.</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Hint */}
+          <Text style={[styles.formatHint, { color: colors.textSecondary }]}>
+            Use toolbar or type: **bold**, # Heading, - bullet, 1. numbered
+          </Text>
+
           <TextInput
+            ref={descriptionRef}
             style={[
               styles.textArea,
               {
@@ -179,11 +283,13 @@ const NoteEditScreen: React.FC = () => {
               setDescription(t);
               if (errors.description) setErrors((e) => ({ ...e, description: undefined }));
             }}
-            placeholder="Write your note here..."
+            onSelectionChange={handleSelectionChange}
+            selection={selection}
+            placeholder={"Write your note here...\n\nUse the toolbar above to format text:\n# Heading 1\n## Heading 2\n**Bold text**\n- Bullet item\n1. Numbered item"}
             placeholderTextColor={colors.textSecondary}
             multiline
             textAlignVertical="top"
-            numberOfLines={10}
+            scrollEnabled
           />
           {errors.description ? (
             <Text style={[styles.errorText, { color: colors.danger }]}>{errors.description}</Text>
@@ -269,12 +375,42 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 16,
   },
+  toolbar: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 6,
+    marginBottom: 8,
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  toolbarBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    minWidth: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolbarBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  toolbarBtnTextBold: {
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  formatHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
   textArea: {
     borderWidth: 1.5,
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    minHeight: 200,
+    minHeight: 350,
     lineHeight: 24,
   },
   errorText: {
