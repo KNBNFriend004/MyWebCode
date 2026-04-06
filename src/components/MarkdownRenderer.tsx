@@ -88,12 +88,12 @@ const parseInline = (text: string): InlineSegment[] => {
   return segments;
 };
 
-const InlineText: React.FC<{ content: string; style: object }> = ({ content, style }) => {
+const InlineText: React.FC<{ content: string; style: object; boldFontWeight?: string }> = ({ content, style, boldFontWeight = '700' }) => {
   const segments = parseInline(content);
   return (
     <Text style={style}>
       {segments.map((seg, i) => (
-        <Text key={i} style={seg.bold ? styles.bold : undefined}>
+        <Text key={i} style={seg.bold ? { fontWeight: boldFontWeight as any } : undefined}>
           {seg.text}
         </Text>
       ))}
@@ -119,6 +119,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 key={index}
                 content={block.content}
                 style={[styles.heading1, { color: textColor }]}
+                boldFontWeight="900"
               />
             );
           case 'heading2':
@@ -127,6 +128,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 key={index}
                 content={block.content}
                 style={[styles.heading2, { color: textColor }]}
+                boldFontWeight="800"
               />
             );
           case 'heading3':
@@ -135,6 +137,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 key={index}
                 content={block.content}
                 style={[styles.heading3, { color: textColor }]}
+                boldFontWeight="800"
               />
             );
           case 'bullet':
