@@ -43,7 +43,8 @@ const NoteEditScreen: React.FC = () => {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(formatDateForInput(new Date().toISOString()));
   const [errors, setErrors] = useState<{ description?: string; date?: string }>({});
-  const [selection, setSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const [pendingSelection, setPendingSelection] = useState<{ start: number; end: number } | undefined>(undefined);
+  const selectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
 
   const descriptionRef = useRef<TextInput>(null);
 
@@ -90,11 +91,14 @@ const NoteEditScreen: React.FC = () => {
   };
 
   const handleSelectionChange = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
-    setSelection(e.nativeEvent.selection);
+    selectionRef.current = e.nativeEvent.selection;
+    if (pendingSelection) {
+      setPendingSelection(undefined);
+    }
   };
 
   const insertFormatting = (prefix: string, suffix: string, placeholder: string) => {
-    const { start, end } = selection;
+    const { start, end } = selectionRef.current;
     const selectedText = description.slice(start, end);
     const textToInsert = selectedText.length > 0 ? selectedText : placeholder;
     const newText =
@@ -103,13 +107,14 @@ const NoteEditScreen: React.FC = () => {
 
     const newCursorPos = start + prefix.length + textToInsert.length;
     setTimeout(() => {
-      setSelection({ start: newCursorPos, end: newCursorPos });
+      setPendingSelection({ start: newCursorPos, end: newCursorPos });
+      selectionRef.current = { start: newCursorPos, end: newCursorPos };
       descriptionRef.current?.focus();
     }, 50);
   };
 
   const insertLinePrefix = (prefix: string) => {
-    const { start } = selection;
+    const { start } = selectionRef.current;
     const beforeCursor = description.slice(0, start);
     const lineStart = beforeCursor.lastIndexOf('\n') + 1;
     const isAtLineStart = start === lineStart || description.slice(lineStart, start).trim() === '';
@@ -130,7 +135,8 @@ const NoteEditScreen: React.FC = () => {
 
     setDescription(newText);
     setTimeout(() => {
-      setSelection({ start: newCursorPos, end: newCursorPos });
+      setPendingSelection({ start: newCursorPos, end: newCursorPos });
+      selectionRef.current = { start: newCursorPos, end: newCursorPos };
       descriptionRef.current?.focus();
     }, 50);
   };
@@ -284,7 +290,7 @@ const NoteEditScreen: React.FC = () => {
               if (errors.description) setErrors((e) => ({ ...e, description: undefined }));
             }}
             onSelectionChange={handleSelectionChange}
-            selection={selection}
+            selection={pendingSelection}
             placeholder={"Write your note here...\n\nUse the toolbar above to format text:\n# Heading 1\n## Heading 2\n**Bold text**\n- Bullet item\n1. Numbered item"}
             placeholderTextColor={colors.textSecondary}
             multiline
