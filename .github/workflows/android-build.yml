@@ -8,77 +8,62 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Added a timeout so a "stuck" build doesn't waste your minutes
-    timeout-minutes: 30 
+    # Forces GitHub to stop the job if it hangs past 45 minutes
+    timeout-minutes: 45 
 
     env:
-      # Fixes "Out of Memory" errors during heavy compilation
+      # Gives Node.js more memory to prevent JavaScript heaps out of memory
       NODE_OPTIONS: "--max-old-space-size=4096"
-      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.daemon=false"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install dependencies
+      - name: Install NPM dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Generate Android Native Code (Prebuild)
+        # --clean ensures we start fresh and don't cache broken files
+        run: npx expo prebuild --platform android --clean
+
+      - name: Safe Async Storage Patch
+        # Appends the missing repository link to the very end of the file safely
         run: |
-          npm install --legacy-peer-deps
-          # Ensure expo-cli is available for the prebuild step
-          npm install -g expo-cli
+          echo "allprojects { repositories { maven { url \"\$rootDir/../node_modules/@react-native-async-storage/async-storage/android/libs\" } } }" >> android/build.gradle
 
-      # FIX: Solves the "Could not find org.asyncstorage" error
-      - name: Configure Android Project
-        run: |
-          mkdir -p android
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-          echo "nodeModulesDir=$(pwd)/node_modules" >> android/gradle.properties
-          # Fix for certain Gradle versions needing higher permissions
-          touch android/settings.gradle
-
-      - name: Prebuild Android
-        run: npx expo prebuild --platform android --no-install
-
-      - name: Cache Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      - name: Grant permission
+      - name: Grant Gradle Permissions
         run: chmod +x android/gradlew
 
-      - name: Build APK
-        id: build_apk
+      - name: Build APK (Memory Optimized)
+        # --no-daemon: Stops ghost processes from eating RAM
+        # --max-workers=2: Prevents the server from freezing by limiting CPU cores
+        # --console=plain: Stops massive log outputs that freeze the GitHub interface
+        # -Xmx2048m: Strictly limits Gradle's memory footprint so the runner doesn't crash
         run: |
           cd android
-          ./gradlew assembleRelease --stacktrace
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --max-workers=2 \
+            --console=plain \
+            -Dorg.gradle.jvmargs="-Xmx2048m -XX:MaxMetaspaceSize=512m"
 
-      # Only uploads if the build actually succeeded
-      - name: Upload APK
+      - name: Upload APK Artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk
-
-      # Helpful error summary if things go wrong
-      - name: Report failure
-        if: failure()
-        run: echo "Build failed. Check the 'Build APK' step logs for Java/Gradle errors."
-        
+          # Using a wildcard just in case the filename varies slightly
+          path: android/app/build/outputs/apk/release/*.apk
+          
