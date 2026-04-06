@@ -9,21 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      GRADLE_OPTS: -Xmx2g
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 18
-
-      - name: Install dependencies
-        run: npm ci
+          cache: 'npm'
 
       - name: Setup Java
         uses: actions/setup-java@v3
@@ -31,24 +25,23 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Install dependencies
+        run: npm install
+
+      # This creates the /android folder that was missing
+      - name: Prebuild Android
+        run: npx expo prebuild --platform android
+
       - name: Cache Gradle
         uses: actions/cache@v3
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*') }}
 
       - name: Grant permission
         run: chmod +x android/gradlew
-
-      - name: Create local.properties
-        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-
-      - name: Clean build
-        run: |
-          cd android
-          ./gradlew clean
 
       - name: Build APK
         run: |
